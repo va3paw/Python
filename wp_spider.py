@@ -1,13 +1,13 @@
 #/usr/bin/python
 import getopt, sys
 import requests
-from lxml import html
+from lxml import html, etree
 from lxml.html.clean import clean_html
-
 
 def download_posts(post_urls, web_root_url):
 
 	global verbose, list_only, counter
+	global index_file_name
 
 	for post_url in post_urls:
 
@@ -20,19 +20,29 @@ def download_posts(post_urls, web_root_url):
 		#post_date = tree.xpath('//*[@id="single-date"]/text()')[0]		
 		##post-1
 		post_short_url = str(post_url).replace(web_root_url,'').replace('/','')
-		print web_root_url
-		print post_short_url
-		#post_data = tree.text_content().encode('utf8') #tree.xpath('//*[@id="content"]/div[2]/text()')
-		post_data = clean_html(page.text)
+		
+		#post_data = tree.text_content().encode('utf8') 
+		#post_data = clean_html(page.text)
+		tree = etree.HTML(page.text)
+		post_title = tree.xpath('//*[@id="content"]/div[2]/div[1]/h1/text()')[0]
+		post_data = tree.xpath('//*[@id="content"]/div[2]')
 
 		counter = counter + 1
 		file_name = str(counter) + ' ' + post_short_url + '.html'
 
-		f = open(file_name, 'w')
-		#f.write(('<html xml:lang="en" xmlns="http://www.w3.org/1999/xhtml"><body>').encode('utf8'))
-		f.write(post_data.encode('utf8'))
-		#f.write(('</body></html>').encode('utf8'))
-		f.close()
+		#if verbose:
+		#	print 'Writing', post_title, 'to', file_name
+		with open(file_name, 'w') as f:
+			#f.write(('<html xml:lang="en" xmlns="http://www.w3.org/1999/xhtml"><body>').encode('utf8'))
+			for node in post_data:
+				f.write(etree.tostring(node).encode('utf8'))
+				#f.write(post_data.encode('utf8'))
+				#f.write(('</body></html>').encode('utf8'))
+		#f.close()
+
+		with open(index_file_name, 'a') as i:
+			s = ('<li><a href="' + file_name + '">' + post_title + '</a></li>').encode('utf8')
+			i.write(s)
 
 
 def parse_page_urls(url, web_root_url):
@@ -81,19 +91,22 @@ def get_post_urls(url):
 
 def scrape(url):
 
-	global verbose
+	global verbose, index_file_name
 
 	if verbose:
 		print "Scraping URL: " + url
 
 		# get page links
 	
-	try:	
+	try:
+		with open(index_file_name, 'w') as i:
+			i.write(('<html><body><p>' + url + '</p><ul>').encode('utf8'))
+
 		post_urls = get_post_urls(url)
 		print 'Found ' + str(len(post_urls)) + ' posts'
 
-		#if (list_only == False):
-		#	download_posts(post_urls)
+		with open(index_file_name, 'a') as i:
+			i.write(('</ul></body></html>').encode('utf8'))
 
 	except RuntimeError as e:
 		print str(e)
@@ -103,43 +116,41 @@ def usage():
 	print "Arguments: {http-url} [--List]"
 
 def main():
-	#global verbose
-	#global list_only
+	# global settings
 
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "ho:vl", ["help", "output="])
-    except getopt.GetoptError as err:
-        # print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
-        usage()
-        sys.exit(2)
+	global verbose, list_only
+	try:
+		opts, args = getopt.getopt(sys.argv[1:], "ho:vl", ["help", "output="])
 
-    list_only = False
-    verbose = False
+	except getopt.GetoptError as err:
+		# print help information and exit:
+		print str(err) # will print something like "option -a not recognized"
+		usage()
+		sys.exit(2)
+	
+	for o, a in opts:
+		if o == "-v":
+			verbose = True
+		elif o in ("-h", "--help"):
+			usage()
+			sys.exit()
+		elif o in ("-l", "--list"):
+			list_only = True
+		else:
+			assert False, "unhandled option"
 
-    for o, a in opts:
-        if o == "-v":
-            verbose = True
-        elif o in ("-h", "--help"):
-            usage()
-            sys.exit()
-        elif o in ("-l", "--list"):
-            #output = a
-            list_only = True
-        else:
-            assert False, "unhandled option"
-    # ...
-    url = args[0]
+	url = args[0]
 
-    if verbose:
-    	print 'List only: ', list_only
-    scrape(url)
+	if verbose:
+		print 'List only: ', list_only
 
-# global settings
+	scrape(url)
+
+index_file_name = 'index.html'
 verbose = True
 list_only = False
 counter = 0
-
+index_file_name = 'index.html'
 if __name__ == "__main__":
-    main()
+	main()
 
