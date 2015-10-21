@@ -19,23 +19,32 @@ def download_posts(post_urls, web_root_url):
 
 		#post_date = tree.xpath('//*[@id="single-date"]/text()')[0]		
 		##post-1
-		post_short_url = str(post_url).replace(web_root_url,'').replace('/','')
+		post_short_url = str(post_url).replace(web_root_url,'').replace('/','').replace('\\','').replace('*','')
 		
 		#post_data = tree.text_content().encode('utf8') 
 		#post_data = clean_html(page.text)
 		tree = etree.HTML(page.text)
-		post_title = tree.xpath('//*[@id="content"]/div[2]/div[1]/h1/text()')[0]
-		post_data = tree.xpath('//*[@id="content"]/div[2]')
+
+		try:
+			post_title = tree.xpath('//*[@id="content"]/div[2]/div[1]/h1/text()')[0]
+			post_data = tree.xpath('//*[@id="content"]/div[2]')
+
+		except:
+			print 'Could not parse the page'
+			return
 
 		counter = counter + 1
 		file_name = str(counter) + ' ' + post_short_url + '.html'
 
-		#if verbose:
-		#	print 'Writing', post_title, 'to', file_name
+		if verbose:
+			print 'Writing', file_name
 		with open(file_name, 'w') as f:
 			#f.write(('<html xml:lang="en" xmlns="http://www.w3.org/1999/xhtml"><body>').encode('utf8'))
 			for node in post_data:
-				f.write(etree.tostring(node).encode('utf8'))
+				s = etree.tostring(node)
+				# replace inline image urls; 
+				# download images
+				f.write(s.encode('utf8'))
 				#f.write(post_data.encode('utf8'))
 				#f.write(('</body></html>').encode('utf8'))
 		#f.close()
@@ -47,7 +56,7 @@ def download_posts(post_urls, web_root_url):
 
 def parse_page_urls(url, web_root_url):
 
-	global verbose, list_only
+	global verbose, list_only, skip
 
 	page = requests.get(url)
 	tree = html.fromstring(page.text)
@@ -60,13 +69,17 @@ def parse_page_urls(url, web_root_url):
 		post_url = tree.xpath(path +'/@href')
 		if len(post_url) == 0:
 			return post_urls
-		if verbose:
-			print 'Found post ', post_url
-		post_urls.append(post_url)
 		div_num = div_num + 1
+		post_urls.append(post_url)
 
-		if (list_only  == False):			
-			download_posts(post_url, web_root_url)
+		if (skip > 0):
+			skip = skip - 1		
+		else:
+			if verbose:
+				print 'Found post ', post_url
+			
+			if (list_only  == False):			
+				download_posts(post_url, web_root_url)
 
 	return post_urls
 
@@ -91,7 +104,7 @@ def get_post_urls(url):
 
 def scrape(url):
 
-	global verbose, index_file_name
+	global verbose, index_file_name, skip, list_only
 
 	if verbose:
 		print "Scraping URL: " + url
@@ -99,14 +112,16 @@ def scrape(url):
 		# get page links
 	
 	try:
-		with open(index_file_name, 'w') as i:
-			i.write(('<html><body><p>' + url + '</p><ul>').encode('utf8'))
+		if (skip == 0) and (list_only == False):
+			with open(index_file_name, 'w') as i:
+				i.write(('<html><body><p>' + url + '</p><ul>').encode('utf8'))
 
 		post_urls = get_post_urls(url)
 		print 'Found ' + str(len(post_urls)) + ' posts'
 
-		with open(index_file_name, 'a') as i:
-			i.write(('</ul></body></html>').encode('utf8'))
+		if list_only == False:
+			with open(index_file_name, 'a') as i:
+				i.write(('</ul></body></html>').encode('utf8'))
 
 	except RuntimeError as e:
 		print str(e)
@@ -118,9 +133,9 @@ def usage():
 def main():
 	# global settings
 
-	global verbose, list_only
+	global verbose, list_only, skip
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], "ho:vl", ["help", "output="])
+		opts, args = getopt.getopt(sys.argv[2:], "s:lvh")
 
 	except getopt.GetoptError as err:
 		# print help information and exit:
@@ -136,18 +151,22 @@ def main():
 			sys.exit()
 		elif o in ("-l", "--list"):
 			list_only = True
+		elif o in ("-s", "--skip"):
+			skip = int(float(a))
 		else:
 			assert False, "unhandled option"
 
-	url = args[0]
+	url = sys.argv[1]
 
 	if verbose:
 		print 'List only: ', list_only
+		print 'Skipping' , skip, 'posts'
+		print 'Url', url
 
 	scrape(url)
 
-index_file_name = 'index.html'
-verbose = True
+skip = 0
+verbose = False
 list_only = False
 counter = 0
 index_file_name = 'index.html'
